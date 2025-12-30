@@ -1,0 +1,6 @@
+{
+  "dwell": 900,
+  "smoothing": 0.25,
+  "theme": "dark",
+  "confidence": 0.35
+}
