@@ -1,0 +1,12 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Runtime / temp files
+eca_temp_run.py
+eca_logs.json
+mic_test.py
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -23,8 +23,7 @@ class UIManager:
         self.code_suggester = CodeSuggester()
         self.error_checker = ErrorChecker()
 
-        # 🔥 FORCE VOICE STATE RESET
-        self.voice.running = False
+        # ✅ Voice callback ONLY
         self.voice.callback = self._on_voice_text
 
         self.root = tk.Tk()
@@ -183,12 +182,11 @@ class UIManager:
             self.suggestion_box.insert(tk.END, s)
 
     def _highlight_errors(self):
-        self.editor.tag_remove("error", "1.0", tk.END)
+    # 🔕 Error detection kept, visual underline removed
         self.error_box.delete(0, tk.END)
+
         for err in self.error_checker.check_errors(self.editor.get("1.0", "end")):
             self.error_box.insert(tk.END, f"Line {err['line']}: {err['hint']}")
-            self.editor.tag_add("error", f"{err['line']}.0", f"{err['line']}.end")
-        self.editor.tag_config("error", foreground="red", underline=True)
 
     def _apply_suggestion(self):
         if not self.suggestion_box.curselection():
@@ -197,27 +195,20 @@ class UIManager:
         suggestion = self.suggestion_box.get(
             self.suggestion_box.curselection()
         )
-    # --- REMOVE LAST TYPED WORD ---
+
         cursor = self.editor.index("insert")
         line_start = self.editor.index("insert linestart")
         text_before = self.editor.get(line_start, cursor)
-
-    # Split to words
         parts = text_before.rstrip().split()
 
         if parts:
-            last_word = parts[-1]
-        # delete only the last word
-            self.editor.delete(f"{cursor}-{len(last_word)}c", cursor)
+            self.editor.delete(f"{cursor}-{len(parts[-1])}c", cursor)
 
-    # --- INSERT FULL TEMPLATE ---
         self.editor.insert("insert", suggestion)
 
-    # --- AUTO INDENT ---
         if suggestion.strip().endswith(":"):
             self.editor.insert("insert", "\n    ")
 
-    # Refresh AI
         self._update_suggestions()
         self._highlight_errors()
 
@@ -231,6 +222,7 @@ class UIManager:
             self.editor.delete("insert-1c")
         else:
             self.editor.insert("insert", key)
+
         self._update_suggestions()
         self._highlight_errors()
 
@@ -240,47 +232,94 @@ class UIManager:
 
         if self.voice.running:
             print("[VOICE] Stopping")
-            self.voice.running = False
             self.voice.stop_listening()
             self.voice_button.config(text="Start Voice")
         else:
             print("[VOICE] Starting")
-            self.voice.running = True
-            self.voice.callback = self._on_voice_text
             self.voice.start_listening()
             self.voice_button.config(text="Stop Voice")
 
     def _on_voice_text(self, text):
-        print("[VOICE TEXT]:", text)
+        print("VOICE RECEIVED:", text)
 
-        if not text:
+        action, value = self.command_engine.interpret(text)
+
+        print("VOICE ACTION:", action, value)
+    # ---- PAUSE / RESUME ----
+        if action == "pause":
+            self.status.config(text=value)
             return
 
-        t = text.lower().strip()
+        if action == "resume":
+            self.status.config(text=value)
+            return
+    # ---- BLOCK WHEN PAUSED ----
+        if action == "blocked":
+            return
 
-        if "for loop" in t or "create a loop" in t:
-            self.editor.insert("insert", "for i in range():\n    ")
-        elif "while loop" in t:
-            self.editor.insert("insert", "while condition:\n    ")
-        elif t.startswith("if"):
-            self.editor.insert("insert", "if condition:\n    ")
-        elif "elif" in t:
-            self.editor.insert("insert", "elif condition:\n    ")
-        elif t.startswith("else"):
-            self.editor.insert("insert", "else:\n    ")
-        elif "function" in t:
-            self.editor.insert("insert", "def function_name():\n    ")
-        elif "class" in t:
-            self.editor.insert("insert", "class ClassName:\n    def __init__(self):\n        ")
-        elif "print" in t:
-            self.editor.insert("insert", 'print("")')
-        elif "import" in t:
-            self.editor.insert("insert", "import module_name")
-        else:
-            self.editor.insert("insert", text + " ")
+    # ---- COMMAND EXECUTION ----
+        if action == "insert" and value:
+            self.editor.insert("insert", value)
+            return
 
-        self._update_suggestions()
-        self._highlight_errors()
+        if action == "backspace":
+            self.editor.delete("insert-1c")
+            return
+
+        if action == "delete_line":
+            self.editor.delete("insert linestart", "insert lineend")
+            return
+
+        if action == "clear_line":
+            self.editor.delete("insert linestart", "insert lineend")
+            return
+        if action == "dedent":
+            try:
+                self.editor.delete("insert-4c", "insert")
+            except Exception:
+                pass
+                return
+
+        if action == "dictation":
+            self.editor.insert("insert", value + " ")
+            return
+
+    # ---- PAUSE / RESUME FEEDBACK ----
+        if action == "pause":
+            self.status.config(text=value)
+            return
+
+        if action == "resume":
+            self.status.config(text=value)
+            return
+
+    # ---- BLOCK INPUT WHEN PAUSED ----
+        if action == "blocked":
+            return
+
+    # ---- COMMAND EXECUTION ----
+        if action == "insert" and value:
+            self.editor.insert("insert", value)
+
+        elif action == "backspace":
+            self.editor.delete("insert-1c")
+
+        elif action == "delete_line":
+            self.editor.delete("insert linestart", "insert lineend")
+
+        elif action == "clear_line":
+            self.editor.delete("insert linestart", "insert lineend")
+
+        elif action == "dedent":
+            try:
+                self.editor.delete("insert-4c", "insert")
+            except Exception:
+                pass
+
+        elif action == "dictation":
+        # Only for comments / identifiers
+            self.editor.insert("insert", value + " ")
+
 
     # ================= RUN CODE =================
     def _run_code(self):
